@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro JS Deobfuscator & Beautifier</title>
+    <!-- Code Beautifier Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.15.1/beautify.min.js"></script>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --panel: #161b22;
+            --text: #c9d1d9;
+            --accent: #58a6ff;
+            --success: #238636;
+            --danger: #da3633;
+            --border: #30363d;
+            --font: 'Fira Code', 'Courier New', Courier, monospace;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            background: var(--bg); 
+            color: var(--text); 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        /* Header */
+        header {
+            background: var(--panel);
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 { font-size: 18px; color: var(--accent); display: flex; align-items: center; gap: 10px; }
+        
+        /* Main Container */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            padding: 15px;
+            gap: 15px;
+        }
+        
+        /* Editor Boxes */
+        .editor-box {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .editor-header {
+            padding: 10px 15px;
+            background: #21262d;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            font-weight: bold;
+            color: #8b949e;
+            display: flex;
+            justify-content: space-between;
+        }
+        textarea {
+            flex: 1;
+            width: 100%;
+            background: transparent;
+            color: #79c0ff;
+            border: none;
+            padding: 15px;
+            font-family: var(--font);
+            font-size: 14px;
+            resize: none;
+            outline: none;
+            line-height: 1.5;
+        }
+
+        /* Buttons */
+        .action-bar {
+            padding: 15px;
+            background: var(--panel);
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary { background: var(--success); color: white; flex: 1; justify-content: center; max-width: 300px;}
+        .btn-primary:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: #30363d; }
+        
+        /* Status Bar */
+        .status-bar {
+            padding: 8px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: bold;
+            color: #e3b341;
+            background: #0d1117;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Responsive Mobile */
+        @media (max-width: 768px) {
+            .main-container { flex-direction: column; }
+            .editor-box { min-height: 250px; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>⚡ Advanced JS Deobfuscator</h1>
+        <div style="font-size: 12px; color: #8b949e;">by Jarvis-md Dev</div>
+    </header>
+
+    <div class="main-container">
+        <!-- Input Box -->
+        <div class="editor-box">
+            <div class="editor-header">
+                <span>Obfuscated Code (Input)</span>
+            </div>
+            <textarea id="inputCode" placeholder="Yahan _0x... ya do(0x...) wala obfuscated code paste karo..."></textarea>
+        </div>
+
+        <!-- Output Box -->
+        <div class="editor-box">
+            <div class="editor-header">
+                <span>Clean Code (Output)</span>
+                <span id="copyBtn" style="cursor: pointer; color: var(--accent);">📋 Copy</span>
+            </div>
+            <textarea id="outputCode" readonly placeholder="Decoded code yahan aayega..."></textarea>
+        </div>
+    </div>
+
+    <div class="action-bar">
+        <button class="btn-secondary" onclick="clearAll()">Clear</button>
+        <button class="btn-primary" onclick="processCode()">🚀 Deobfuscate & Beautify</button>
+    </div>
+
+    <div class="status-bar" id="status">Ready to decode...</div>
+
+    <script>
+        function updateStatus(msg, isError = false) {
+            const el = document.getElementById('status');
+            el.innerText = msg;
+            el.style.color = isError ? '#da3633' : '#e3b341';
+        }
+
+        // 1. Hex & Unicode Decoder
+        function decodeEscapes(code) {
+            return code.replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+                       .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+        }
+
+        // 2. Standard Obfuscator.io String Array Decoder
+        function decodeStringArrays(code) {
+            try {
+                const arrayRegex = /(var|const|let)\s+(_0x[a-fA-F0-9]+)\s*=\s*\[([\s\S]*?)\];/;
+                const match = code.match(arrayRegex);
+                if (!match) return code;
+
+                const arrName = match[2];
+                const arrStr = `[${match[3]}]`;
+                
+                const rotRegex = new RegExp(`\\(function\\([^)]*\\)\\s*\\{[\\s\\S]*?${arrName}[\\s\\S]*?\\}\\s*\\(\\s*${arrName}\\s*,\\s*(0x[a-fA-F0-9]+)\\s*\\)\\);`);
+                const rotMatch = code.match(rotRegex);
+                
+                let decodedArray = eval(arrStr); 
+                
+                if (rotMatch) {
+                    const rotFuncStr = rotMatch[0];
+                    eval(rotFuncStr); 
+                }
+
+                const decFuncRegex = new RegExp(`function\\s+(_0x[a-fA-F0-9]+)\\s*\\([^)]*\\)\\s*\\{[\\s\\S]*?return\\s+${arrName}\\[`);
+                const decMatch = code.match(decFuncRegex);
+                
+                if (decMatch) {
+                    const decFuncName = decMatch[1];
+                    const callRegex = new RegExp(`${decFuncName}\\((0x[a-fA-F0-9]+)\\)`, 'g');
+                    code = code.replace(callRegex, (m, hex) => {
+                        const idx = parseInt(hex, 16);
+                        return JSON.stringify(decodedArray[idx] || m);
+                    });
+                }
+            } catch (e) {
+                console.log("String array decode skipped:", e.message);
+            }
+            return code;
+        }
+
+        // 3. Custom Base-String Decoder (Jarvis-md / do(0x, 0x) style)
+        function decodeCustomDo(code) {
+            try {
+                // Big string extract karo (e.g. var of = "...")
+                const ofMatch = code.match(/var\s+(?:of|_0x[a-fA-F0-9]+)\s*=\s*"([\s\S]*?)";/);
+                if (!ofMatch) return code;
+                const OF = ofMatch[1];
+
+                function customDecode(str, alphabet) {
+                    const bytes = [];
+                    let acc = 0, shift = 0, prev = -1;
+                    for (let i = 0; i < str.length; i++) {
+                        const idx = alphabet.indexOf(str[i]);
+                        if (idx === -1) continue;
+                        if (prev < 0) prev = idx;
+                        else {
+                            prev += idx * 0x5b;
+                            acc |= prev << shift;
+                            shift += (prev & 0x1fff) > 0x58 ? 0xd : 0xe;
+                            do { bytes.push(acc & 0xff); acc >>= 8; shift -= 8; } while (shift > 7);
+                            prev = -1;
+                        }
+                    }
+                    if (prev > -1) bytes.push((acc | prev << shift) & 0xff);
+                    return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+                }
+
+                // Saare possible alphabets dhundho (80-100 chars wale)
+                const alphabets = [...code.matchAll(/var\s+(?:do|in|of|_\w+)\s*=\s*"([^"]{80,100})"/g)].map(m => m[1]);
+                
+                // Fallback alphabet (Jarvis-md)
+                if (alphabets.length === 0) {
+                    alphabets.push('jA~Z%q>NQI($R"z7)9!mfbHhKxTo{&Li0nd4Ou}#a+tY,cWk[5<*ECsgeU@:/D;`?rSFBvwl2Jy3GPX6|]^.V8_=p1M');
+                }
+
+                // Replace do(0x..., 0x...) calls
+                code = code.replace(/\b(?:in|do)\(0x([0-9a-f]+),\s*0x([0-9a-f]+)\)/g, (match, p1, p2) => {
+                    const off = parseInt(p1, 16);
+                    const len = parseInt(p2, 16);
+                    try {
+                        const slice = OF.slice(off, off + len);
+                        for (const alpha of alphabets) {
+                            const decoded = customDecode(slice, alpha);
+                            // Check karo ke clean text hai ya nahi
+                            if (/^[\x20-\x7E\s]*$/.test(decoded)) {
+                                return JSON.stringify(decoded);
+                            }
+                        }
+                    } catch (e) {}
+                    return match;
+                });
+            } catch(e) {
+                console.log("Custom decoder skipped:", e.message);
+            }
+            return code;
+        }
+
+        // 4. Main Process Function
+        function processCode() {
+            let code = document.getElementById('inputCode').value;
+            if (!code.trim()) return updateStatus("⚠️ Pehle code paste toh karo!", true);
+
+            updateStatus("⏳ Step 1: Decoding Escapes (Hex/Unicode)...");
+            code = decodeEscapes(code);
+
+            updateStatus("⏳ Step 2: Extracting & Decoding String Arrays...");
+            code = decodeStringArrays(code);
+
+            updateStatus("⏳ Step 3: Cracking Custom Bit-Shift Decoders...");
+            code = decodeCustomDo(code);
+
+            updateStatus("⏳ Step 4: Beautifying Code...");
+            try {
+                code = js_beautify(code, {
+                    indent_size: 2,
+                    space_in_empty_paren: true,
+                    preserve_newlines: true,
+                    max_preserve_newlines: 2
+                });
+            } catch (e) {
+                console.log("Beautify error:", e);
+            }
+
+            document.getElementById('outputCode').value = code;
+            updateStatus("✅ Done! Code Successfully Decoded & Cleaned.");
+        }
+
+        // Copy Button Logic
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            const out = document.getElementById('outputCode');
+            if (!out.value) return updateStatus("Kuch copy karne ko nahi hai!", true);
+            out.select();
+            out.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(out.value).then(() => {
+                updateStatus("📋 Copied to clipboard!");
+                setTimeout(() => updateStatus("Ready to decode..."), 2000);
+            });
+        });
+
+        function clearAll() {
+            document.getElementById('inputCode').value = '';
+            document.getElementById('outputCode').value = '';
+            updateStatus("Cleared!");
+        }
+    </script>
+</body>
+</html>
