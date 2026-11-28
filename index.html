@@ -30,7 +30,7 @@
 <body>
     <header>
         <h1>🛡️ <span>Ultimate</span> JS Deobfuscator</h1>
-        <div style="font-size: 12px; color: var(--text-muted);">v3.1 Master</div>
+        <div style="font-size: 12px; color: var(--text-muted);">v4.0 Super</div>
     </header>
 
     <div class="container">
@@ -61,48 +61,6 @@
             el.style.color = isError ? 'var(--danger)' : '#e3b341';
         }
 
-        function decodeEscapes(code) {
-            return code.replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-                       .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
-        }
-
-        function decodeStringArrays(code) {
-            try {
-                const arrayRegex = /(var|const|let)\s+(_0x[a-fA-F0-9]+)\s*=\s*\[([\s\S]*?)\];/;
-                const match = code.match(arrayRegex);
-                if (!match) return code;
-
-                const arrName = match[2];
-                const arrStr = `[${match[3]}]`;
-                const rotRegex = new RegExp(`\\(function\\([^)]*\\)\\s*\\{[\\s\\S]*?${arrName}[\\s\\S]*?\\}\\s*\\(\\s*${arrName}\\s*,\\s*(0x[a-fA-F0-9]+)\\s*\\)\\);`);
-                const rotMatch = code.match(rotRegex);
-                
-                let decodedArray = eval(arrStr); 
-                if (rotMatch) { try { eval(rotMatch[0]); } catch(e) {} }
-
-                const decFuncRegex = new RegExp(`function\\s+(_0x[a-fA-F0-9]+)\\s*\\([^)]*\\)\\s*\\{[\\s\\S]*?return\\s+${arrName}\\[`);
-                const decMatch = code.match(decFuncRegex);
-                
-                if (decMatch) {
-                    const decFuncName = decMatch[1];
-                    const callRegex = new RegExp(`${decFuncName}\\((0x[a-fA-F0-9]+)\\)`, 'g');
-                    code = code.replace(callRegex, (m, hex) => {
-                        return JSON.stringify(decodedArray[parseInt(hex, 16)] || m);
-                    });
-                }
-            } catch (e) { console.log("Array Decode Error:", e); }
-            return code;
-        }
-
-        function extractStrings(code) {
-            const strRegex = /var\s+[a-zA-Z0-9_$]+\s*=\s*"((?:[^"\\]|\\.)*)"/g;
-            let match; const strings = [];
-            while ((match = strRegex.exec(code)) !== null) {
-                try { strings.push(JSON.parse('"' + match[1] + '"')); } catch(e) {}
-            }
-            return strings;
-        }
-
         function customDecode(str, alphabet) {
             const bytes = [];
             let acc = 0, shift = 0, prev = -1;
@@ -126,21 +84,24 @@
 
         function decodeCustomBase(code) {
             try {
-                const allStrings = extractStrings(code);
+                // 1. Saari string values nikaalo (Unicode names ko support karte hue)
+                const strRegex = /var\s+[^\s=]+\s*=\s*"((?:[^"\\]|\\.)*)"/g;
+                let match; const allStrings = [];
+                while ((match = strRegex.exec(code)) !== null) {
+                    try { allStrings.push(JSON.parse('"' + match[1] + '"')); } catch(e) {}
+                }
                 if (allStrings.length === 0) return code;
 
-                // Sabse lamba string uthao (Base String)
+                // 2. Sabse lamba string (Data)
                 const OF = [...allStrings].sort((a, b) => b.length - a.length)[0];
-                if (!OF) return code; 
+                if (!OF || OF.length < 100) return code;
 
-                // Alphabets dhoondo
-                let alphabets = allStrings.filter(s => s.length >= 65 && s.length <= 120);
-                if (alphabets.length === 0) {
-                    alphabets.push('0FnojOMZ.VyK)]sD^d<BxacS/u+WEGLH`;{?Qhm:!i}JU54P&=qNrClf[Tkz~(pg$%*,Rl6AY@#e19bvl7>tXw"\\_823');
-                }
+                // 3. Saare alphabets dhoondo (90 characters ke aas-paas)
+                let alphabets = allStrings.filter(s => s.length >= 80 && s.length <= 100);
+                if (alphabets.length === 0) return code;
 
-                // inZWNJ(0x..., 0x...) ko match karo
-                code = code.replace(/\b[a-zA-Z0-9_$]+\s*\(\s*0x([0-9a-f]+)\s*,\s*0x([0-9a-f]+)\s*\)/gi, (match, p1, p2) => {
+                // 4. Calls ko replace karo (Unicode variable names jaise inтАМ(0x...))
+                code = code.replace(/[^\s\(\)\{\}\;=]+\(\s*0x([0-9a-f]+)\s*,\s*0x([0-9a-f]+)\s*\)/gi, (match, p1, p2) => {
                     const off = parseInt(p1, 16);
                     const len = parseInt(p2, 16);
                     try {
@@ -149,13 +110,13 @@
                         for (const alpha of alphabets) {
                             const decoded = customDecode(slice, alpha);
                             if (decoded && /^[\x20-\x7E\s]*$/.test(decoded) && decoded.length > 0) {
-                                return JSON.stringify(decoded); // Clean String Return
+                                return JSON.stringify(decoded);
                             }
                         }
                     } catch (e) {}
                     return match;
                 });
-            } catch(e) { console.log("Custom Base Error:", e); }
+            } catch(e) { console.log("Error:", e); }
             return code;
         }
 
@@ -163,22 +124,20 @@
             let code = document.getElementById('inputCode').value;
             if (!code.trim()) return setStatus("⚠️ Please paste some code first!", true);
 
-            setStatus("⏳ Step 1: Decoding Escapes...");
-            code = decodeEscapes(code);
+            setStatus("⏳ Decoding... (Thoda time lag sakta hai)");
+            
+            // Thoda delay taaki UI update ho jaye
+            setTimeout(() => {
+                code = decodeCustomBase(code);
 
-            setStatus("⏳ Step 2: Extracting String Arrays...");
-            code = decodeStringArrays(code);
+                setStatus("⏳ Beautifying...");
+                try {
+                    code = js_beautify(code, { indent_size: 2, space_in_empty_paren: true });
+                } catch (e) {}
 
-            setStatus("⏳ Step 3: Cracking Base Strings...");
-            code = decodeCustomBase(code);
-
-            setStatus("⏳ Step 4: Beautifying...");
-            try {
-                code = js_beautify(code, { indent_size: 2, space_in_empty_paren: true });
-            } catch (e) {}
-
-            document.getElementById('outputCode').value = code;
-            setStatus("✅ Success! Code Cleaned.");
+                document.getElementById('outputCode').value = code;
+                setStatus("✅ Success! Code Cleaned.");
+            }, 100);
         }
 
         document.getElementById('copyBtn').addEventListener('click', () => {
